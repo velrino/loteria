@@ -2,18 +2,21 @@ import {
   ArrowDownWideNarrow,
   ArrowUpNarrowWide,
   ChartColumnBig,
+  CircleDot,
   Hash,
-  List,
+  LayoutList,
   Loader2,
   Search,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ColorFrequency } from "@/components/color-frequency";
 import { DrawCard } from "@/components/draw-card";
 import { Navbar } from "@/components/navbar";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
+import { Segmented } from "@/components/ui/segmented";
+import { Tooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import {
   fetchDraws,
@@ -171,19 +174,54 @@ function App() {
           </div>
         </div>
 
-        <div className="mb-5 grid gap-3 rounded-xl border bg-card p-3 shadow-sm">
-          <div className="grid grid-cols-2 gap-2">
-            <SearchModeButton
-              active={searchMode === "concurso"}
-              onClick={() => setSearchMode("concurso")}
-              icon={<Hash className="h-5 w-5" />}
-              label="Concurso"
-            />
-            <SearchModeButton
-              active={searchMode === "resultado"}
-              onClick={() => setSearchMode("resultado")}
-              icon={<List className="h-5 w-5" />}
-              label="Resultado"
+        <div className="mb-5 space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <Tooltip
+              label={
+                searchMode === "concurso"
+                  ? "Buscando pelo número do concurso. Toque para buscar por dezenas."
+                  : "Buscando pelas dezenas sorteadas. Toque para buscar por concurso."
+              }
+            >
+              <button
+                type="button"
+                onClick={() =>
+                  setSearchMode(
+                    searchMode === "concurso" ? "resultado" : "concurso",
+                  )
+                }
+                aria-label={
+                  searchMode === "concurso"
+                    ? "Modo: buscar por concurso. Toque para buscar por dezenas."
+                    : "Modo: buscar por dezenas. Toque para buscar por concurso."
+                }
+                className="flex h-11 items-center gap-2 rounded-xl border border-input bg-background px-4 text-sm font-semibold transition-colors hover:bg-accent"
+              >
+                {searchMode === "concurso" ? (
+                  <Hash className="h-4 w-4 text-primary" />
+                ) : (
+                  <CircleDot className="h-4 w-4 text-primary" />
+                )}
+                {searchMode === "concurso" ? "Concurso" : "Resultado"}
+              </button>
+            </Tooltip>
+
+            <Segmented
+              value={sortOrder}
+              onChange={setSortOrder}
+              className="h-11 p-1"
+              options={[
+                {
+                  value: "desc",
+                  icon: <ArrowDownWideNarrow className="h-4 w-4" />,
+                  ariaLabel: "Mais recentes primeiro",
+                },
+                {
+                  value: "asc",
+                  icon: <ArrowUpNarrowWide className="h-4 w-4" />,
+                  ariaLabel: "Mais antigos primeiro",
+                },
+              ]}
             />
           </div>
 
@@ -198,9 +236,12 @@ function App() {
             <input
               id="draw-search"
               value={searchTerm}
-              onChange={(event) => setSearchTerm(event.target.value)}
+              inputMode={searchMode === "concurso" ? "numeric" : "text"}
+              onChange={(event) =>
+                setSearchTerm(event.target.value.replace(/[^\d\s,]/g, ""))
+              }
               placeholder={searchPlaceholder}
-              className="h-11 w-full rounded-lg border border-input bg-background pl-9 pr-11 text-base outline-none transition-colors placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
+              className="h-11 w-full rounded-xl border border-input bg-background pl-9 pr-10 text-base outline-none transition-colors placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
             />
             {searchTerm && (
               <Button
@@ -216,36 +257,26 @@ function App() {
               </Button>
             )}
           </div>
-
-          <div className="grid grid-cols-2 gap-2">
-            <SortButton
-              active={sortOrder === "desc"}
-              onClick={() => setSortOrder("desc")}
-              icon={<ArrowDownWideNarrow className="h-5 w-5" />}
-              label="Desc"
-            />
-            <SortButton
-              active={sortOrder === "asc"}
-              onClick={() => setSortOrder("asc")}
-              icon={<ArrowUpNarrowWide className="h-5 w-5" />}
-              label="Asc"
-            />
-          </div>
         </div>
 
         {showColors && status === "ready" && (
-          <div className="mb-5 grid grid-cols-2 gap-2">
-            <TabButton
-              active={tab === "resultados"}
-              onClick={() => setTab("resultados")}
-              icon={<List className="h-5 w-5" />}
-              label="Resultados"
-            />
-            <TabButton
-              active={tab === "cores"}
-              onClick={() => setTab("cores")}
-              icon={<ChartColumnBig className="h-5 w-5" />}
-              label="Cores"
+          <div className="mb-5">
+            <Segmented
+              fullWidth
+              value={tab}
+              onChange={setTab}
+              options={[
+                {
+                  value: "resultados",
+                  label: "Resultados",
+                  icon: <LayoutList className="h-4 w-4" />,
+                },
+                {
+                  value: "cores",
+                  label: "Cores",
+                  icon: <ChartColumnBig className="h-4 w-4" />,
+                },
+              ]}
             />
           </div>
         )}
@@ -486,35 +517,6 @@ function formatFrequencyScopeLabel(sampleCount: number, totalCount: number) {
   return `os últimos ${numberFormatter.format(sampleCount)} de ${numberFormatter.format(totalCount)} concursos`;
 }
 
-function SearchModeButton({
-  active,
-  onClick,
-  icon,
-  label,
-}: {
-  active: boolean;
-  onClick: () => void;
-  icon: ReactNode;
-  label: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={cn(
-        "flex h-11 items-center justify-center gap-2 rounded-lg border text-base font-semibold transition-colors",
-        active
-          ? "border-primary bg-primary text-primary-foreground shadow-sm"
-          : "bg-background text-muted-foreground hover:bg-accent",
-      )}
-    >
-      {icon}
-      {label}
-    </button>
-  );
-}
-
 function FrequencyScopeControl({
   value,
   max,
@@ -530,137 +532,54 @@ function FrequencyScopeControl({
       : "";
 
   return (
-    <div className="grid gap-3 rounded-xl border bg-card p-3 shadow-sm">
-      <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
-        <SampleButton
-          active={value === "all"}
-          onClick={() => onChange("all")}
-          label="Todos"
+    <div className="space-y-2">
+      <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        Amostra
+      </span>
+      <div className="flex flex-wrap items-center gap-2">
+        <Segmented
+          value={isFrequencyPreset(value) || value === "all" ? value : "all"}
+          onChange={onChange}
+          size="sm"
+          options={[
+            { value: "all", label: "Todos" },
+            ...FREQUENCY_PRESETS.map((preset) => ({
+              value: preset,
+              label: String(preset),
+            })),
+          ]}
         />
-        {FREQUENCY_PRESETS.map((preset) => (
-          <SampleButton
-            key={preset}
-            active={value === preset}
-            onClick={() => onChange(preset)}
-            label={String(preset)}
-          />
-        ))}
+        <label htmlFor="frequency-custom" className="sr-only">
+          Outro número de concursos
+        </label>
+        <input
+          id="frequency-custom"
+          type="number"
+          min={1}
+          max={Math.max(max, 1)}
+          inputMode="numeric"
+          value={customValue}
+          onChange={(event) => {
+            const nextValue = Number(event.target.value);
+            onChange(
+              Number.isInteger(nextValue) && nextValue > 0 ? nextValue : "all",
+            );
+          }}
+          placeholder="Outro"
+          className={cn(
+            "h-9 w-24 rounded-lg border border-input bg-background px-3 text-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring",
+            customValue && "border-primary",
+          )}
+        />
       </div>
-
-      <label htmlFor="frequency-custom" className="sr-only">
-        Outro número de concursos
-      </label>
-      <input
-        id="frequency-custom"
-        type="number"
-        min={1}
-        max={Math.max(max, 1)}
-        inputMode="numeric"
-        value={customValue}
-        onChange={(event) => {
-          const nextValue = Number(event.target.value);
-          onChange(
-            Number.isInteger(nextValue) && nextValue > 0 ? nextValue : "all",
-          );
-        }}
-        placeholder="Outro"
-        className={cn(
-          "h-11 w-full rounded-lg border border-input bg-background px-3 text-base outline-none transition-colors placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring",
-          customValue && "border-primary",
-        )}
-      />
     </div>
   );
 }
 
 function isFrequencyPreset(
-  value: number,
+  value: FrequencyLimit,
 ): value is (typeof FREQUENCY_PRESETS)[number] {
   return FREQUENCY_PRESETS.some((preset) => preset === value);
-}
-
-function SampleButton({
-  active,
-  onClick,
-  label,
-}: {
-  active: boolean;
-  onClick: () => void;
-  label: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={cn(
-        "flex h-10 items-center justify-center rounded-lg border text-sm font-semibold transition-colors",
-        active
-          ? "border-primary bg-primary text-primary-foreground shadow-sm"
-          : "bg-background text-muted-foreground hover:bg-accent",
-      )}
-    >
-      {label}
-    </button>
-  );
-}
-
-function SortButton({
-  active,
-  onClick,
-  icon,
-  label,
-}: {
-  active: boolean;
-  onClick: () => void;
-  icon: ReactNode;
-  label: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={cn(
-        "flex h-11 items-center justify-center gap-2 rounded-lg border text-base font-semibold transition-colors",
-        active
-          ? "border-primary bg-primary text-primary-foreground shadow-sm"
-          : "bg-background text-muted-foreground hover:bg-accent",
-      )}
-    >
-      {icon}
-      {label}
-    </button>
-  );
-}
-
-function TabButton({
-  active,
-  onClick,
-  icon,
-  label,
-}: {
-  active: boolean;
-  onClick: () => void;
-  icon: ReactNode;
-  label: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={cn(
-        "flex h-12 items-center justify-center gap-2 rounded-lg border text-base font-semibold transition-colors",
-        active
-          ? "border-primary bg-primary text-primary-foreground shadow-sm"
-          : "bg-card text-muted-foreground hover:bg-accent",
-      )}
-    >
-      {icon}
-      {label}
-    </button>
-  );
 }
 
 export default App;
