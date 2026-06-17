@@ -15,9 +15,14 @@ const pctFormatter = new Intl.NumberFormat("pt-BR", {
 type ColorFrequencyProps = {
   draws: Draw[];
   lottery: Lottery;
+  scopeLabel: string;
 };
 
-export function ColorFrequency({ draws, lottery }: ColorFrequencyProps) {
+export function ColorFrequency({
+  draws,
+  lottery,
+  scopeLabel,
+}: ColorFrequencyProps) {
   const picks = draws[0]?.dezenas.length ?? 0;
   const distributions = useMemo(
     () => colorDistributions(draws, picks),
@@ -28,7 +33,7 @@ export function ColorFrequency({ draws, lottery }: ColorFrequencyProps) {
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">
         Em quantos sorteios cada cor aparece e com que frequência, considerando
-        todos os {draws.length} concursos.
+        {scopeLabel}.
       </p>
 
       {distributions.map(({ color, rows }) => (

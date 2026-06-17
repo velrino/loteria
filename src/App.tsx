@@ -2,6 +2,7 @@ import {
   ArrowDownWideNarrow,
   ArrowUpNarrowWide,
   ChartColumnBig,
+  Hash,
   List,
   Loader2,
   Search,
@@ -27,25 +28,38 @@ const PAGE_SIZE = 20;
 
 type Tab = "resultados" | "cores";
 type SortOrder = "asc" | "desc";
+type SearchMode = "concurso" | "resultado";
+type FrequencyLimit = "all" | number;
 
 type UrlState = {
   selected: LotteryKey;
   search: string;
+  searchMode: SearchMode;
   sortOrder: SortOrder;
   tab: Tab;
+  frequencyLimit: FrequencyLimit;
 };
 
 const DEFAULT_LOTTERY: LotteryKey = "mega-sena";
 const DEFAULT_TAB: Tab = "resultados";
 const DEFAULT_SORT: SortOrder = "desc";
+const DEFAULT_SEARCH_MODE: SearchMode = "concurso";
+const DEFAULT_FREQUENCY_LIMIT: FrequencyLimit = "all";
+const FREQUENCY_PRESETS = [5, 10, 25, 50] as const;
 
 function App() {
   const [selected, setSelected] = useState<LotteryKey>(
     () => readUrlState().selected,
   );
   const [searchTerm, setSearchTerm] = useState(() => readUrlState().search);
+  const [searchMode, setSearchMode] = useState<SearchMode>(
+    () => readUrlState().searchMode,
+  );
   const [sortOrder, setSortOrder] = useState<SortOrder>(
     () => readUrlState().sortOrder,
+  );
+  const [frequencyLimit, setFrequencyLimit] = useState<FrequencyLimit>(
+    () => readUrlState().frequencyLimit,
   );
   const [draws, setDraws] = useState<Draw[]>([]);
   const [status, setStatus] = useState<"loading" | "ready" | "error">(
@@ -58,8 +72,12 @@ function App() {
   const lottery = getLottery(selected);
   const showColors = lottery.colored;
   const filteredDraws = useMemo(
-    () => filterAndSortDraws(draws, searchTerm, sortOrder),
-    [draws, searchTerm, sortOrder],
+    () => filterAndSortDraws(draws, searchTerm, searchMode, sortOrder),
+    [draws, searchMode, searchTerm, sortOrder],
+  );
+  const frequencyDraws = useMemo(
+    () => selectFrequencyDraws(filteredDraws, frequencyLimit),
+    [filteredDraws, frequencyLimit],
   );
 
   useEffect(() => {
@@ -92,8 +110,10 @@ function App() {
 
       setSelected(next.selected);
       setSearchTerm(next.search);
+      setSearchMode(next.searchMode);
       setSortOrder(next.sortOrder);
       setTab(next.tab);
+      setFrequencyLimit(next.frequencyLimit);
     };
 
     window.addEventListener("popstate", syncFromUrl);
@@ -104,12 +124,19 @@ function App() {
   }, []);
 
   useEffect(() => {
-    writeUrlState({ selected, search: searchTerm, sortOrder, tab });
-  }, [searchTerm, selected, sortOrder, tab]);
+    writeUrlState({
+      selected,
+      search: searchTerm,
+      searchMode,
+      sortOrder,
+      tab,
+      frequencyLimit,
+    });
+  }, [frequencyLimit, searchMode, searchTerm, selected, sortOrder, tab]);
 
   useEffect(() => {
     setVisible(PAGE_SIZE);
-  }, [searchTerm, selected, sortOrder, tab]);
+  }, [searchMode, searchTerm, selected, sortOrder, tab]);
 
   useEffect(() => {
     if (!showColors && tab === "cores") {
@@ -123,6 +150,12 @@ function App() {
         ? `${numberFormatter.format(filteredDraws.length)} de ${numberFormatter.format(draws.length)} concursos`
         : `${numberFormatter.format(draws.length)} concursos`
       : "Resultados dos concursos";
+  const searchPlaceholder =
+    searchMode === "concurso" ? "Número do concurso" : "Dezenas sorteadas";
+  const frequencyScopeLabel = formatFrequencyScopeLabel(
+    frequencyDraws.length,
+    filteredDraws.length,
+  );
 
   return (
     <div className="min-h-screen">
@@ -139,9 +172,24 @@ function App() {
         </div>
 
         <div className="mb-5 grid gap-3 rounded-xl border bg-card p-3 shadow-sm">
+          <div className="grid grid-cols-2 gap-2">
+            <SearchModeButton
+              active={searchMode === "concurso"}
+              onClick={() => setSearchMode("concurso")}
+              icon={<Hash className="h-5 w-5" />}
+              label="Concurso"
+            />
+            <SearchModeButton
+              active={searchMode === "resultado"}
+              onClick={() => setSearchMode("resultado")}
+              icon={<List className="h-5 w-5" />}
+              label="Resultado"
+            />
+          </div>
+
           <div className="relative">
             <label htmlFor="draw-search" className="sr-only">
-              Buscar por concurso ou dezenas
+              {searchPlaceholder}
             </label>
             <Search
               className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
@@ -151,7 +199,7 @@ function App() {
               id="draw-search"
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
-              placeholder="Concurso ou dezenas"
+              placeholder={searchPlaceholder}
               className="h-11 w-full rounded-lg border border-input bg-background pl-9 pr-11 text-base outline-none transition-colors placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
             />
             {searchTerm && (
@@ -246,7 +294,18 @@ function App() {
 
         {status === "ready" && tab === "cores" && showColors && (
           filteredDraws.length > 0 ? (
-            <ColorFrequency draws={filteredDraws} lottery={lottery} />
+            <div className="space-y-5">
+              <FrequencyScopeControl
+                value={frequencyLimit}
+                max={filteredDraws.length}
+                onChange={setFrequencyLimit}
+              />
+              <ColorFrequency
+                draws={frequencyDraws}
+                lottery={lottery}
+                scopeLabel={frequencyScopeLabel}
+              />
+            </div>
           ) : (
             <div className="rounded-xl border bg-card py-16 text-center text-sm text-muted-foreground">
               Nenhum concurso encontrado.
@@ -265,8 +324,10 @@ function readUrlState(): UrlState {
     return {
       selected: DEFAULT_LOTTERY,
       search: "",
+      searchMode: DEFAULT_SEARCH_MODE,
       sortOrder: DEFAULT_SORT,
       tab: DEFAULT_TAB,
+      frequencyLimit: DEFAULT_FREQUENCY_LIMIT,
     };
   }
 
@@ -275,16 +336,28 @@ function readUrlState(): UrlState {
     params.get("modalidade") ?? params.get("jogo") ?? params.get("lottery"),
   );
   const search = params.get("busca") ?? params.get("q") ?? "";
+  const searchMode = parseSearchMode(params.get("tipo"), search);
   const sortOrder = parseSortOrder(params.get("ordem") ?? params.get("sort"));
   const tab = parseTab(params.get("aba") ?? params.get("tab"));
+  const frequencyLimit = parseFrequencyLimit(
+    params.get("amostra") ?? params.get("ultimos"),
+  );
 
-  return { selected, search, sortOrder, tab };
+  return { selected, search, searchMode, sortOrder, tab, frequencyLimit };
 }
 
-function writeUrlState({ selected, search, sortOrder, tab }: UrlState) {
+function writeUrlState({
+  selected,
+  search,
+  searchMode,
+  sortOrder,
+  tab,
+  frequencyLimit,
+}: UrlState) {
   const params = new URLSearchParams();
 
   params.set("modalidade", selected);
+  params.set("tipo", searchMode);
   params.set("ordem", sortOrder);
 
   const normalizedSearch = search.trim();
@@ -294,6 +367,10 @@ function writeUrlState({ selected, search, sortOrder, tab }: UrlState) {
 
   if (tab !== DEFAULT_TAB) {
     params.set("aba", tab);
+  }
+
+  if (frequencyLimit !== DEFAULT_FREQUENCY_LIMIT) {
+    params.set("amostra", String(frequencyLimit));
   }
 
   const nextUrl = `${window.location.pathname}?${params.toString()}${window.location.hash}`;
@@ -326,6 +403,30 @@ function parseSortOrder(value: string | null): SortOrder {
   return value === "asc" || value === "crescente" ? "asc" : DEFAULT_SORT;
 }
 
+function parseSearchMode(value: string | null, search: string): SearchMode {
+  if (value === "resultado" || value === "resultados" || value === "dezenas") {
+    return "resultado";
+  }
+
+  if (value === "concurso") {
+    return "concurso";
+  }
+
+  return extractNumbers(search).length > 1 ? "resultado" : DEFAULT_SEARCH_MODE;
+}
+
+function parseFrequencyLimit(value: string | null): FrequencyLimit {
+  if (!value || value === "todos" || value === "all") {
+    return DEFAULT_FREQUENCY_LIMIT;
+  }
+
+  const parsed = Number(value);
+
+  return Number.isInteger(parsed) && parsed > 0
+    ? parsed
+    : DEFAULT_FREQUENCY_LIMIT;
+}
+
 function parseTab(value: string | null): Tab {
   return value === "cores" ? "cores" : DEFAULT_TAB;
 }
@@ -333,13 +434,14 @@ function parseTab(value: string | null): Tab {
 function filterAndSortDraws(
   draws: Draw[],
   search: string,
+  searchMode: SearchMode,
   sortOrder: SortOrder,
 ) {
   const numbers = extractNumbers(search);
   const normalized = search.trim();
   const filtered = normalized
     ? numbers.length > 0
-      ? draws.filter((draw) => matchesSearch(draw, numbers))
+      ? draws.filter((draw) => matchesSearch(draw, numbers, searchMode))
       : []
     : draws;
 
@@ -350,21 +452,157 @@ function filterAndSortDraws(
   );
 }
 
-function matchesSearch(draw: Draw, numbers: number[]) {
+function matchesSearch(draw: Draw, numbers: number[], searchMode: SearchMode) {
   if (numbers.length === 0) {
     return true;
   }
 
-  const matchesConcurso = numbers.length === 1 && draw.concurso === numbers[0];
-  const matchesDezenas = numbers.every((number) =>
-    draw.dezenas.includes(number),
-  );
+  if (searchMode === "concurso") {
+    return numbers.some((number) => draw.concurso === number);
+  }
 
-  return matchesConcurso || matchesDezenas;
+  return numbers.every((number) => draw.dezenas.includes(number));
 }
 
 function extractNumbers(value: string) {
   return (value.match(/\d+/g) ?? []).map(Number);
+}
+
+function selectFrequencyDraws(draws: Draw[], frequencyLimit: FrequencyLimit) {
+  if (frequencyLimit === "all") {
+    return draws;
+  }
+
+  return [...draws]
+    .sort((a, b) => b.concurso - a.concurso)
+    .slice(0, frequencyLimit);
+}
+
+function formatFrequencyScopeLabel(sampleCount: number, totalCount: number) {
+  if (sampleCount === totalCount) {
+    return `todos os ${numberFormatter.format(totalCount)} concursos`;
+  }
+
+  return `os últimos ${numberFormatter.format(sampleCount)} de ${numberFormatter.format(totalCount)} concursos`;
+}
+
+function SearchModeButton({
+  active,
+  onClick,
+  icon,
+  label,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon: ReactNode;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={cn(
+        "flex h-11 items-center justify-center gap-2 rounded-lg border text-base font-semibold transition-colors",
+        active
+          ? "border-primary bg-primary text-primary-foreground shadow-sm"
+          : "bg-background text-muted-foreground hover:bg-accent",
+      )}
+    >
+      {icon}
+      {label}
+    </button>
+  );
+}
+
+function FrequencyScopeControl({
+  value,
+  max,
+  onChange,
+}: {
+  value: FrequencyLimit;
+  max: number;
+  onChange: (value: FrequencyLimit) => void;
+}) {
+  const customValue =
+    typeof value === "number" && !isFrequencyPreset(value)
+      ? String(value)
+      : "";
+
+  return (
+    <div className="grid gap-3 rounded-xl border bg-card p-3 shadow-sm">
+      <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+        <SampleButton
+          active={value === "all"}
+          onClick={() => onChange("all")}
+          label="Todos"
+        />
+        {FREQUENCY_PRESETS.map((preset) => (
+          <SampleButton
+            key={preset}
+            active={value === preset}
+            onClick={() => onChange(preset)}
+            label={String(preset)}
+          />
+        ))}
+      </div>
+
+      <label htmlFor="frequency-custom" className="sr-only">
+        Outro número de concursos
+      </label>
+      <input
+        id="frequency-custom"
+        type="number"
+        min={1}
+        max={Math.max(max, 1)}
+        inputMode="numeric"
+        value={customValue}
+        onChange={(event) => {
+          const nextValue = Number(event.target.value);
+          onChange(
+            Number.isInteger(nextValue) && nextValue > 0 ? nextValue : "all",
+          );
+        }}
+        placeholder="Outro"
+        className={cn(
+          "h-11 w-full rounded-lg border border-input bg-background px-3 text-base outline-none transition-colors placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring",
+          customValue && "border-primary",
+        )}
+      />
+    </div>
+  );
+}
+
+function isFrequencyPreset(
+  value: number,
+): value is (typeof FREQUENCY_PRESETS)[number] {
+  return FREQUENCY_PRESETS.some((preset) => preset === value);
+}
+
+function SampleButton({
+  active,
+  onClick,
+  label,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={cn(
+        "flex h-10 items-center justify-center rounded-lg border text-sm font-semibold transition-colors",
+        active
+          ? "border-primary bg-primary text-primary-foreground shadow-sm"
+          : "bg-background text-muted-foreground hover:bg-accent",
+      )}
+    >
+      {label}
+    </button>
+  );
 }
 
 function SortButton({
