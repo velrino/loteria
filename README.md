@@ -70,7 +70,7 @@ flowchart TD
     Navbar -->|select key| App
     App -->|fetchDraws| Lib
     Lib -->|HTTP GET| Assets
-    Assets -->|Draw[]| Lib
+    Assets -->|draws JSON| Lib
     Lib -->|parsed draws| App
     App -->|filtered + sorted| Results
     App -->|sampled draws| Colors
@@ -91,7 +91,7 @@ sequenceDiagram
     App->>App: status = "loading"
     App->>Lib: fetchDraws(lottery)
     Lib->>CDN: GET /loteria/data/quina.json
-    CDN-->>Lib: Draw[] (JSON)
+    CDN-->>Lib: draws as JSON
     Lib-->>App: parsed draws
     App->>App: status = "ready"
     App-->>User: render cards / frequency
